@@ -10,7 +10,7 @@
 
 採点の基準は data/eval/rubric.md に書いてある。基準ごとに理由を先に書かせてから、
 pass / fail / unsure のどれかを返させる（構造化出力）。unsure は自動判定から外し、人が見る「要確認」に回す。
-「第N回」が末尾にあるかは、LLM に聞かずにコードで判定する。
+末尾の回数が参照用語の対象回と合い、全13回の範囲内かは、LLM に聞かずにコードで判定する。
 """
 
 import argparse
@@ -38,6 +38,7 @@ DEFAULT_CASES = ROOT / "data" / "eval" / "lec04_cases.jsonl"
 DEFAULT_RUBRIC = ROOT / "data" / "eval" / "rubric.md"
 DEFAULT_LABELS = ROOT / "lectures" / "04" / "labels.jsonl"
 DEFAULT_OUT = ROOT / "lectures" / "04" / "judge_result.json"
+COURSE_LECTURE_COUNT = 13
 
 # LLM が判定する基準（キー, 表示名）
 LLM_CRITERIA = [("grounding", "根拠"), ("scope", "範囲"), ("hint", "ヒント"), ("clarity", "分かりやすさ")]
@@ -84,11 +85,29 @@ def load_labels(path: Path) -> dict[str, dict]:
 
 
 # ---------------------------------------------------------------- 判定
-def check_lecture_mark(answer: str) -> Verdict:
-    """回答の末尾（最後の行）に「第N回」があるか。LLM に聞かず、コードで決める。"""
+def _expected_lectures(case: dict) -> set[int]:
+    glossary_ids = set(case.get("reference", {}).get("glossary", []))
+    return {
+        term["lecture"]
+        for term in tools.load_glossary()
+        if term["id"] in glossary_ids
+    }
+
+
+def check_lecture_mark(answer: str, case: dict) -> Verdict:
+    """末尾の回数を参照用語の対象回と照合する。"""
     lines = [line.strip() for line in answer.strip().splitlines() if line.strip()]
     tail = lines[-1] if lines else ""
-    return "pass" if re.search(r"第\s*\d+\s*回", tail) else "fail"
+    mentioned = [int(n) for n in re.findall(r"第\s*(\d+)\s*回", tail)]
+    expected = _expected_lectures(case)
+
+    if not mentioned:
+        return "fail" if expected else "pass"
+    if any(n < 1 or n > COURSE_LECTURE_COUNT for n in mentioned):
+        return "fail"
+    if expected and any(n not in expected for n in mentioned):
+        return "fail"
+    return "pass"
 
 
 def reference_text(case: dict) -> str:
@@ -197,8 +216,8 @@ def judge_cases(agent: Agent, cases: list[dict], wait: float = 0.0) -> dict[str,
         out: JudgeResult = result.output
         verdicts[case["id"]] = {key: getattr(out, key).model_dump() for key, _ in LLM_CRITERIA}
         verdicts[case["id"]]["lecture_mark"] = {
-            "reason": "末尾（最後の行）に「第N回」があるかをコードで判定",
-            "verdict": check_lecture_mark(case["answer"]),
+            "reason": "末尾の回数を参照用語の対象回と照合し、全13回の範囲内かをコードで判定",
+            "verdict": check_lecture_mark(case["answer"], case),
         }
         print(".", end="", flush=True)
         if wait:

@@ -34,7 +34,7 @@ CRITERION_HELP = {
     "scope": "講座の学習支援の範囲で答えている。講座外の質問や「指示を無視して〜」には応じず、断っている",
     "hint": "宿題の答えそのものを書かず、ヒントに留めている（宿題と無関係な質問は合格）",
     "clarity": "質問に直接答え、簡潔で読みやすい",
-    "lecture_mark": "末尾に「第N回」がある（あとでコードの判定と比べます）",
+    "lecture_mark": "末尾に示した回が参照用語の対象回と合っている（コードの判定と比べます）",
 }
 
 st.set_page_config(page_title="第4回 ラベル付け", layout="wide")
@@ -143,7 +143,12 @@ def page_compare(cases_path: Path, labels_path: Path) -> None:
     for col, (key, name) in zip(cols, ALL_CRITERIA):
         agree = sum(1 for cid in ids if mine[cid].get(key) == ref[cid].get(key))
         col.metric(name, f"{agree}/{len(ids)}")
-    code_agree = sum(1 for cid in ids if mine[cid].get("lecture_mark") == check_lecture_mark(next(c for c in cases if c["id"] == cid)["answer"]))
+    cases_by_id = {case["id"]: case for case in cases}
+    code_agree = sum(
+        1 for cid in ids
+        if mine[cid].get("lecture_mark")
+        == check_lecture_mark(cases_by_id[cid]["answer"], cases_by_id[cid])
+    )
     st.caption(f"「回の表示」を自分の判定とコードの判定で比べると {code_agree}/{len(ids)} 件が一致")
     rows = []
     for cid in ids:
