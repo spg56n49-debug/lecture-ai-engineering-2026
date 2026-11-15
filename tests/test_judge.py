@@ -22,10 +22,18 @@ from app.judge import (
 INSTRUCTOR_LABELS = judge.ROOT / "lectures" / "04" / "reference" / "labels_instructor.jsonl"
 
 
-def test_lecture_mark_is_checked_by_code():
-    assert check_lecture_mark("LoRA は…\n\n関係する回：第2回") == "pass"
-    assert check_lecture_mark("第2回で扱う LoRA は…\n\n以上です。") == "fail"  # 末尾に無ければ fail
-    assert check_lecture_mark("") == "fail"
+def test_lecture_mark_matches_referenced_lecture():
+    cases = read_jsonl(DEFAULT_CASES)
+    lora_case = next(case for case in cases if case["id"] == "01")
+    assert check_lecture_mark("LoRA は…\n\n関係する回：第2回", lora_case) == "pass"
+    assert check_lecture_mark("LoRA は…\n\n関係する回：第3回", lora_case) == "fail"
+    assert check_lecture_mark("第2回で扱う LoRA は…\n\n以上です。", lora_case) == "fail"
+
+
+def test_lecture_mark_allows_no_related_lecture_but_rejects_nonexistent_lecture():
+    no_lecture_case = {"reference": {"glossary": []}}
+    assert check_lecture_mark("関係する回：なし", no_lecture_case) == "pass"
+    assert check_lecture_mark("関係する回：第14回", no_lecture_case) == "fail"
 
 
 def test_overall_requires_all_required_criteria():
